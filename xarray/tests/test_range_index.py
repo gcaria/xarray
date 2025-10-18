@@ -263,6 +263,16 @@ def test_range_index_sel() -> None:
     with pytest.raises(ValueError, match=r"RangeIndex doesn't support.*tolerance"):
         ds.sel(x=0.1, method="nearest", tolerance=1e-3)
 
+    # Test slice selection without method parameter
+    actual = ds.sel(x=slice(0.12, 0.28))
+    expected = create_dataset_arange(0.1, 0.3, 0.1)
+    assert_identical(actual, expected, check_default_indexes=False)
+
+    # Test slice selection with step without method parameter
+    actual = ds.sel(x=slice(0.0, 1.0, 0.2))
+    expected = ds.isel(x=range(0, 10, 2))
+    assert_identical(actual, expected, check_default_indexes=False)
+
 
 def test_range_index_to_pandas_index() -> None:
     ds = create_dataset_arange(0.0, 1.0, 0.1)

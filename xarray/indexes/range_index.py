@@ -355,15 +355,7 @@ class RangeIndex(CoordinateTransformIndex):
     ) -> IndexSelResult:
         label = labels[self.dim]
 
-        if method != "nearest":
-            raise ValueError("RangeIndex only supports selection with method='nearest'")
-
-        # TODO: for RangeIndex it might not be too hard to support tolerance
-        if tolerance is not None:
-            raise ValueError(
-                "RangeIndex doesn't support selection with a given tolerance value yet"
-            )
-
+        # Handle slice selection without requiring method='nearest'
         if isinstance(label, slice):
             if label.step is None:
                 # continuous interval slice indexing (preserves the index)
@@ -376,7 +368,21 @@ class RangeIndex(CoordinateTransformIndex):
                 return IndexSelResult({self.dim: slice(new_start, new_stop)})
             else:
                 # otherwise convert to basic (array) indexing
+                # For slice with step, we can handle it without method='nearest'
+                # by converting to array and using nearest neighbor logic
                 label = np.arange(label.start, label.stop, label.step)
+                # Set method to 'nearest' for the converted array
+                method = "nearest"
+
+        # For non-slice selections, require method='nearest'
+        if method != "nearest":
+            raise ValueError("RangeIndex only supports selection with method='nearest'")
+
+        # TODO: for RangeIndex it might not be too hard to support tolerance
+        if tolerance is not None:
+            raise ValueError(
+                "RangeIndex doesn't support selection with a given tolerance value yet"
+            )
 
         # support basic indexing (in the 1D case basic vs. vectorized indexing
         # are pretty much similar)
