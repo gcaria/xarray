@@ -1286,31 +1286,58 @@ class PandasMultiIndex(PandasIndex):
         # label(s) given for multi-index level(s)
         if all(lbl in self.index.names for lbl in labels):
             label_values = {}
+            has_slice = False
+
             for k, v in labels.items():
-                label_array = normalize_label(v, dtype=self.level_coords_dtype[k])
-                try:
-                    label_values[k] = as_scalar(label_array)
-                except ValueError as err:
-                    # label should be an item not an array-like
-                    raise ValueError(
-                        "Vectorized selection is not "
-                        f"available along coordinate {k!r} (multi-index level)"
-                    ) from err
+                if isinstance(v, slice):
+                    # Handle slice selection on a specific level
+                    has_slice = True
+                    # Get the level index for this level
+                    level_index = self.index.get_level_values(k)
+                    try:
+                        # Use _query_slice on the level index, not the full MultiIndex
+                        level_indexer = _query_slice(level_index, v, k)
+                        # Convert the level indexer to a MultiIndex indexer
+                        level_mask = np.zeros(len(self.index), dtype=bool)
+                        level_mask[level_indexer] = True
+                        indexer = level_mask
+                        # Update scalar coordinate values for the level
+                        scalar_coord_values[k] = v
+                    except KeyError as e:
+                        # Provide a more informative error message for slice selection failures
+                        raise KeyError(
+                            f"Cannot use slice selection on MultiIndex level '{k}' "
+                            f"because the level contains non-unique values. "
+                            f"Use specific values instead of slices, or ensure the level has unique values. "
+                            f"Original error: {e}"
+                        ) from e
+                    break
+                else:
+                    label_array = normalize_label(v, dtype=self.level_coords_dtype[k])
+                    try:
+                        label_values[k] = as_scalar(label_array)
+                    except ValueError as err:
+                        # label should be an item not an array-like
+                        raise ValueError(
+                            "Vectorized selection is not "
+                            f"available along coordinate {k!r} (multi-index level)"
+                        ) from err
 
-            has_slice = any(isinstance(v, slice) for v in label_values.values())
+            if not has_slice:
+                has_slice = any(isinstance(v, slice) for v in label_values.values())
 
-            if len(label_values) == self.index.nlevels and not has_slice:
-                indexer = self.index.get_loc(
-                    tuple(label_values[k] for k in self.index.names)
-                )
-            else:
-                indexer, new_index = self.index.get_loc_level(
-                    tuple(label_values.values()), level=tuple(label_values.keys())
-                )
-                scalar_coord_values.update(label_values)
-                # GH2619. Raise a KeyError if nothing is chosen
-                if indexer.dtype.kind == "b" and indexer.sum() == 0:  # type: ignore[union-attr]
-                    raise KeyError(f"{labels} not found")
+                if len(label_values) == self.index.nlevels and not has_slice:
+                    indexer = self.index.get_loc(
+                        tuple(label_values[k] for k in self.index.names)
+                    )
+                else:
+                    indexer, new_index = self.index.get_loc_level(
+                        tuple(label_values.values()), level=tuple(label_values.keys())
+                    )
+                    scalar_coord_values.update(label_values)
+                    # GH2619. Raise a KeyError if nothing is chosen
+                    if indexer.dtype.kind == "b" and indexer.sum() == 0:  # type: ignore[union-attr]
+                        raise KeyError(f"{labels} not found")
 
         # assume one label value given for the multi-index "array" (dimension)
         else:

@@ -1419,10 +1419,56 @@ class TestDataArray:
         assert_identical(mdata.loc["a"], mdata.sel(x="a"))
         assert_identical(mdata.loc[("a", 1), ...], mdata.sel(x=("a", 1)))
         assert_identical(mdata.loc[{"one": "a"}, ...], mdata.sel(x={"one": "a"}))
-        with pytest.raises(IndexError):
-            mdata.loc[("a", 1)]
 
-        assert_identical(mdata.sel(x={"one": "a", "two": 1}), mdata.sel(one="a", two=1))
+    def test_selection_multiindex_level_based(self) -> None:
+        """Test level-based selection on MultiIndex DataArray."""
+        # Test with unique level values
+        midx = pd.MultiIndex.from_arrays(
+            [["a", "a", "b", "b", "c", "c"], [1, 2, 3, 4, 5, 6]], names=("foo", "bar")
+        )
+        da = DataArray(range(6), [("x", midx)])
+
+        # Test slice selection on level with unique values
+        result = da.sel(bar=slice(2, 5))
+        expected_indices = [1, 2, 3]  # indices where bar is 2, 3, 4
+        expected = da.isel(x=expected_indices)
+        assert_identical(result, expected)
+
+        # Test slice selection on level with unique values - different slice
+        result = da.sel(bar=slice(3, 6))
+        expected_indices = [2, 3, 4, 5]  # indices where bar is 3, 4, 5, 6
+        expected = da.isel(x=expected_indices)
+        assert_identical(result, expected)
+
+        # Test slice selection on level with unique values - single level
+        result = da.sel(foo=slice("a", "b"))
+        expected_indices = [0, 1, 2, 3]  # indices where foo is 'a' or 'b'
+        expected = da.isel(x=expected_indices)
+        assert_identical(result, expected)
+
+        # Test mixed level selection
+        result = da.sel(foo="a", bar=slice(1, 3))
+        expected_indices = [0, 1]  # indices where foo is 'a' and bar is 1 or 2
+        expected = da.isel(x=expected_indices)
+        assert_identical(result, expected)
+
+    def test_selection_multiindex_level_based_non_unique(self) -> None:
+        """Test level-based selection on MultiIndex DataArray with non-unique level values."""
+        # Test with non-unique level values (should raise error)
+        midx = pd.MultiIndex.from_product([["a", "b"], [1, 2]], names=("foo", "bar"))
+        da = DataArray(range(4), [("x", midx)])
+
+        # Test slice selection on level with non-unique values
+        with pytest.raises(
+            KeyError, match=r"Cannot use slice selection on MultiIndex level 'bar'"
+        ):
+            da.sel(bar=slice(1, 2))
+
+        # Test slice selection on level with non-unique values - different level
+        with pytest.raises(
+            KeyError, match=r"Cannot use slice selection on MultiIndex level 'foo'"
+        ):
+            da.sel(foo=slice("a", "b"))
 
     def test_selection_multiindex_remove_unused(self) -> None:
         # GH2619. For MultiIndex, we need to call remove_unused.

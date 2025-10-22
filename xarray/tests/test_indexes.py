@@ -509,6 +509,79 @@ class TestPandasMultiIndex:
         with pytest.raises(IndexError):
             index.sel({"x": (slice(None), 1, "no_level")})
 
+    def test_sel_level_based_selection(self) -> None:
+        """Test level-based selection on MultiIndex."""
+        # Test with unique level values
+        index = PandasMultiIndex(
+            pd.MultiIndex.from_arrays(
+                [["a", "a", "b", "b", "c", "c"], [1, 2, 3, 4, 5, 6]],
+                names=("one", "two"),
+            ),
+            "x",
+        )
+
+        # Test slice selection on level with unique values
+        actual = index.sel({"two": slice(2, 5)})
+        expected_mask = np.array([False, True, True, True, False, False])
+        assert np.array_equal(actual.dim_indexers["x"], expected_mask)
+        assert actual.scalar_coord_values == {"two": slice(2, 5)}
+
+        # Test slice selection on level with unique values - different slice
+        actual = index.sel({"two": slice(3, 6)})
+        expected_mask = np.array([False, False, True, True, True, True])
+        assert np.array_equal(actual.dim_indexers["x"], expected_mask)
+        assert actual.scalar_coord_values == {"two": slice(3, 6)}
+
+        # Test slice selection on level with unique values - single level
+        actual = index.sel({"one": slice("a", "b")})
+        expected_mask = np.array([True, True, True, True, False, False])
+        assert np.array_equal(actual.dim_indexers["x"], expected_mask)
+        assert actual.scalar_coord_values == {"one": slice("a", "b")}
+
+    def test_sel_level_based_selection_non_unique(self) -> None:
+        """Test level-based selection on MultiIndex with non-unique level values."""
+        # Test with non-unique level values (should raise error)
+        index = PandasMultiIndex(
+            pd.MultiIndex.from_product([["a", "b"], [1, 2]], names=("one", "two")), "x"
+        )
+
+        # Test slice selection on level with non-unique values
+        with pytest.raises(
+            KeyError, match=r"Cannot use slice selection on MultiIndex level 'two'"
+        ):
+            index.sel({"two": slice(1, 2)})
+
+        # Test slice selection on level with non-unique values - different level
+        with pytest.raises(
+            KeyError, match=r"Cannot use slice selection on MultiIndex level 'one'"
+        ):
+            index.sel({"one": slice("a", "b")})
+
+    def test_sel_level_based_selection_mixed(self) -> None:
+        """Test level-based selection with mixed level and dimension selection."""
+        index = PandasMultiIndex(
+            pd.MultiIndex.from_arrays(
+                [["a", "a", "b", "b", "c", "c"], [1, 2, 3, 4, 5, 6]],
+                names=("one", "two"),
+            ),
+            "x",
+        )
+
+        # Test mixed level selection (should work)
+        actual = index.sel({"one": "a", "two": slice(1, 3)})
+        expected_mask = np.array([True, True, False, False, False, False])
+        assert np.array_equal(actual.dim_indexers["x"], expected_mask)
+        assert actual.scalar_coord_values == {"one": "a", "two": slice(1, 3)}
+
+        # Test with both levels as slices (should work if both have unique values)
+        actual = index.sel({"one": slice("a", "b"), "two": slice(2, 4)})
+        expected_mask = np.array([False, True, True, True, False, False])
+        assert np.array_equal(actual.dim_indexers["x"], expected_mask)
+        assert actual.scalar_coord_values == {
+            "one": slice("a", "b"),
+            "two": slice(2, 4),
+        }
+
     def test_join(self):
         midx = pd.MultiIndex.from_product([["a", "aa"], [1, 2]], names=("one", "two"))
         level_coords_dtype = {"one": "=U2", "two": "i"}

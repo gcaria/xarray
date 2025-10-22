@@ -2223,6 +2223,58 @@ class TestDataset:
 
         assert_identical(mdata.sel(x={"one": "a", "two": 1}), mdata.sel(one="a", two=1))
 
+    def test_selection_multiindex_level_based(self) -> None:
+        """Test level-based selection on MultiIndex Dataset."""
+        # Test with unique level values
+        midx = pd.MultiIndex.from_arrays(
+            [["a", "a", "b", "b", "c", "c"], [1, 2, 3, 4, 5, 6]], names=("foo", "bar")
+        )
+        midx_coords = Coordinates.from_pandas_multiindex(midx, "x")
+        ds = Dataset(data_vars={"var": ("x", range(6))}, coords=midx_coords)
+
+        # Test slice selection on level with unique values
+        result = ds.sel(bar=slice(2, 5))
+        expected_indices = [1, 2, 3]  # indices where bar is 2, 3, 4
+        expected = ds.isel(x=expected_indices)
+        assert_identical(result, expected)
+
+        # Test slice selection on level with unique values - different slice
+        result = ds.sel(bar=slice(3, 6))
+        expected_indices = [2, 3, 4, 5]  # indices where bar is 3, 4, 5, 6
+        expected = ds.isel(x=expected_indices)
+        assert_identical(result, expected)
+
+        # Test slice selection on level with unique values - single level
+        result = ds.sel(foo=slice("a", "b"))
+        expected_indices = [0, 1, 2, 3]  # indices where foo is 'a' or 'b'
+        expected = ds.isel(x=expected_indices)
+        assert_identical(result, expected)
+
+        # Test mixed level selection
+        result = ds.sel(foo="a", bar=slice(1, 3))
+        expected_indices = [0, 1]  # indices where foo is 'a' and bar is 1 or 2
+        expected = ds.isel(x=expected_indices)
+        assert_identical(result, expected)
+
+    def test_selection_multiindex_level_based_non_unique(self) -> None:
+        """Test level-based selection on MultiIndex Dataset with non-unique level values."""
+        # Test with non-unique level values (should raise error)
+        midx = pd.MultiIndex.from_product([["a", "b"], [1, 2]], names=("foo", "bar"))
+        midx_coords = Coordinates.from_pandas_multiindex(midx, "x")
+        ds = Dataset(data_vars={"var": ("x", range(4))}, coords=midx_coords)
+
+        # Test slice selection on level with non-unique values
+        with pytest.raises(
+            KeyError, match=r"Cannot use slice selection on MultiIndex level 'bar'"
+        ):
+            ds.sel(bar=slice(1, 2))
+
+        # Test slice selection on level with non-unique values - different level
+        with pytest.raises(
+            KeyError, match=r"Cannot use slice selection on MultiIndex level 'foo'"
+        ):
+            ds.sel(foo=slice("a", "b"))
+
     def test_broadcast_like(self) -> None:
         original1 = DataArray(
             np.random.randn(5), [("x", range(5))], name="a"
